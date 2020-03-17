@@ -1,6 +1,8 @@
 
 from flask import Flask, render_template,\
 jsonify,request,abort
+from flask_cors import CORS
+jsonify,request,abort
 import json
 import requests
 from datetime import datetime
@@ -12,7 +14,7 @@ app.config['MYSQL_PASSWORD']='password'
 app.config['MYSQL_DB'] = 'users'
 app.config['MYSQL_PORT'] = 3306
 mysql = MySQL(app)
-
+CORS(app)
 
 @app.route("/")
 def hello():
@@ -26,6 +28,32 @@ def is_sha1(maybe_sha):
     except ValueError:
         return False
     return True
+@app.route('/api/v1/_count', methods=["GET"])
+def http_count():
+        if(request.method == 'GET'):
+                 dic={}
+                 dic["flag"]=7
+                 resp = requests.post('http://127.0.0.1:80/api/v1/db/read', json = dic)
+                 res= res.json()["result"]
+                 if(len(res) == 0):
+                  	      return " ",204
+                 else:
+                        return jsonify(res),200
+        else:
+                " ",405
+@app.route('/api/v1/_count', methods=["DELETE"])
+def reset_count():
+    if(request.method == "DELETE"):
+        dic={}
+        dic["flag"]=8
+        y=requests.post("http://127.0.0.1:80/api/v1/db/write",json=dic)
+        res=y.json()["result"]
+        if(res==-1):
+            return " ",400
+        else:
+            return " ",200
+    else:
+        return " ",405
 @app.route("/api/v1/db/clear",methods=["POST"])
 def clear_db():
 
@@ -41,6 +69,13 @@ def clear_db():
 
 @app.route("/api/v1/users",methods=["GET"])
 def get_users():
+    dic={}
+    dic["flag"]=7
+    y=requests.post("http://127.0.0.1:80/api/v1/db/write",json=dic)
+    res=y.json()["result"]
+    if(res==-1):
+        return " ",400
+    dic.clear()
     cursor = mysql.connection.cursor()
     cursor.execute("SELECT Name FROM users_m")
     a=cursor.fetchall()
@@ -60,6 +95,12 @@ def get_users():
 def add_user():
     if(request.method =="PUT"):
         dic={}
+        dic["flag"]=7
+        y=requests.post("http://127.0.0.1:80/api/v1/db/write",json=dic)
+        res=y.json()["result"]
+	if(res==-1):
+            return " ",400
+        dic.clear()
         username=request.get_json()["username"]
         password=request.get_json()["password"]
         if(is_sha1(password)):
@@ -83,6 +124,13 @@ def add_user():
 @app.route("/api/v1/users/<username>",methods=["DELETE"])
 def delete_user(username):
     if(request.method == "DELETE"):
+        dic={}
+        dic["flag"]=7
+        y=requests.post("http://127.0.0.1:80/api/v1/db/write",json=dic)
+        res=y.json()["result"]
+        if(res==-1):
+            return " ",400
+        dic.clear()
         dic={}
         dic["flag"]=2
         dic["username"]=username
@@ -145,7 +193,7 @@ def write_to_db():
             dic["result"]=0
             return dic
         else:
-            cursor.execute("INSERT INTO ride(Source,Destination,Created_by,timestamp) values (%s,%s,%s,%s)",(source,destination,username,timestamp))
+            cursor.execute("INSERT INTO rides_m(Source,Destination,Created_by,timestamp) values (%s,%s,%s,%s)",(source,destination,username,timestamp))
             dic["result"]=1
             mysql.connection.commit()
             mysql.connection.commit()
@@ -165,11 +213,33 @@ def write_to_db():
         dic={}
         rideid=request.get_json()["rideid"]
         cursor=mysql.connection.cursor()
-        cursor.execute("DELETE FROM ride WHERE ID=%s",rideid)
+        cursor.execute("DELETE FROM rides_m WHERE ID=%s",rideid)
         mysql.connection.commit()
         cursor.close()
         dic["result"]=1
         return dic
+    if(flag==7):
+        dic={}
+        cursor=mysql.connection.cursor()
+        try:
+             cursor.execute("UPDATE calls SET count=count+1")
+             dic["result"]=1
+        except Exception as e:
+            dic["result"]=-1
+        mysql.connection.commit()
+        cursor.close()
+        return dic
+    if(flag==8):
+        dic={}
+        cursor=mysql.connection.cursor()
+        try:
+             cursor.execute("UPDATE calls SET count=0")
+             dic["result"]=1
+        except Exception as e:
+            dic["result"]=-1
+        mysql.connection.commit()
+        cursor.close()
+        return dic        
 
 @app.route("/api/v1/db/read",methods=["POST"])
 def read_from_db():
@@ -189,7 +259,7 @@ def read_from_db():
             dic["value"] = -2
             return dic
         cursor =mysql.connection.cursor()
-        cursor.execute("SELECT * FROM ride WHERE source = %s and destination= %s",(source,destination))
+        cursor.execute("SELECT * FROM rides_m WHERE source = %s and destination= %s",(source,destination))
         row=cursor.fetchall()
         if(len(row)==0):
             dic={}
@@ -224,13 +294,13 @@ def read_from_db():
         rideid=request.get_json()["rideid"]
         username=request.get_json()["username"]
         cursor=mysql.connection.cursor()
-        cursor.execute("SELECT * from users where Name=%s",(username,))
+        cursor.execute("SELECT * from users_m where Name=%s",(username,))
         a=cursor.fetchone()
         if(len(a)==0):
           dic["1"]=0
         else:
           dic["1"]=1
-        cursor.execute("SELECT * from ride where ID=%s",(rideid,))
+        cursor.execute("SELECT * from rides_m where ID=%s",(rideid,))
         a=cursor.fetchone()
         if(len(a)==0):
           dic["2"]=0
@@ -244,14 +314,14 @@ def read_from_db():
         dic["1"]=0
         rideid=request.get_json()["rideid"]
         cursor=mysql.connection.cursor()
-        cursor.execute("SELECT * FROM ride WHERE ID=%s",(rideid,))
+        cursor.execute("SELECT * FROM rides_m WHERE ID=%s",(rideid,))
         a=cursor.fetchone()
         if(not(a)):
             dic["1"]=1
             return dic
         else:
             dic["rideId"]=rideid
-            cursor.execute("SELECT * FROM ride WHERE ID=%s",(rideid,))
+            cursor.execute("SELECT * FROM rides_m WHERE ID=%s",(rideid,))
             a=cursor.fetchone()
             dic["created_by"]=a[3]
             cursor.execute("SELECT * FROM ridetable WHERE ID=%s",(rideid,))
@@ -260,7 +330,7 @@ def read_from_db():
             for row in a :
                 li.append(row[1])
             dic["users"]=li
-            cursor.execute("SELECT * FROM ride WHERE ID=%s",(rideid,))
+            cursor.execute("SELECT * FROM rides_m WHERE ID=%s",(rideid,))
             a=cursor.fetchone()
             timestamp=str(a[4])
             datetime_object = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
@@ -272,7 +342,7 @@ def read_from_db():
     if flag==6:
         rideid=request.get_json()["rideid"]
         cursor=mysql.connection.cursor()
-        cursor.execute("SELECT * FROM ride WHERE ID=%s",(rideid,))
+        cursor.execute("SELECT * FROM rides_m WHERE ID=%s",(rideid,))
         a=cursor.fetchall()
         dic={}
         if len(a)==0:
@@ -281,7 +351,18 @@ def read_from_db():
             dic["1"]=0
         return dic
 
-
+    if flag==7:
+	cursor=mysql.connection.cursor()
+        cursor.execute("SELECT count FROM calls")
+        res=cursor.fetchall()
+        l=[]
+        for i in res:
+            l.append(i[0])
+	mysql.connection.commit()
+        cursor.close()
+        dic={}
+        dic["result"]=l
+        return dic
     else:
         username=request.get_json()["username"]
         cursor = mysql.connection.cursor()
